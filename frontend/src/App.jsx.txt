@@ -1,0 +1,17 @@
+import React from 'react'
+import FinanceDashboard from './components/FinanceDashboard'
+
+function App() {
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <header className="bg-blue-600 text-white p-4 text-center text-xl font-bold">
+        Personal Finance Dashboard
+      </header>
+      <main className="p-4">
+        <FinanceDashboard />
+      </main>
+    </div>
+  )
+}
+
+export default App

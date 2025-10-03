@@ -1,0 +1,40 @@
+const Database = require("better-sqlite3");
+const path = require("path");
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, "data.sqlite");
+const db = new Database(DB_PATH);
+
+function init() {
+  db.exec(`
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      bank TEXT,
+      masked TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS transactions (
+      id TEXT PRIMARY KEY,
+      date TEXT,
+      timestamp TEXT,
+      account_id TEXT,
+      type TEXT,
+      amount REAL,
+      category TEXT,
+      description TEXT,
+      bank TEXT,
+      raw TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (account_id) REFERENCES accounts(id)
+    );
+  `);
+}
+init();
+
+const insertAccountStmt = db.prepare("INSERT OR IGNORE INTO accounts (id, bank, masked) VALUES (@id,@bank,@masked)");
+const insertTxStmt = db.prepare("INSERT INTO transactions (id, date, timestamp, account_id, type, amount, category, description, bank, raw) VALUES (@id,@date,@timestamp,@accountId,@type,@amount,@category,@description,@bank,@raw)");
+
+function upsertAccount(a){ insertAccountStmt.run(a); }
+function insertTransaction(tx){ if(tx.accountId) upsertAccount({ id: tx.accountId, bank: tx.bank||null, masked: tx.accountId }); return insertTxStmt.run(tx) ? true : false; }
+function getTransactions({accountId,date,limit=200}={}){ let sql=`SELECT * FROM transactions`; const clauses=[]; const params={}; if(accountId){ clauses.push("account_id=@accountId"); params.accountId=accountId;} if(date){ clauses.push("date=@date"); params.date=date;} if(clauses.length) sql+=" WHERE "+clauses.join(" AND "); sql+=" ORDER BY timestamp DESC LIMIT @limit"; params.limit=limit; return db.prepare(sql).all(params); }
+
+module.exports={db,insertTransaction,upsertAccount,getTransactions};

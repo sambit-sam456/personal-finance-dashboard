@@ -1,0 +1,20 @@
+version: "3.8"
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - API_KEY=dev-key-123
+      - DB_PATH=/data/data.sqlite
+    volumes:
+      - ./data:/data
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE=http://localhost:3001

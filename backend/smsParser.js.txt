@@ -1,0 +1,75 @@
+const bankDetectPatterns = [
+  { name: "HDFC", pattern: /HDFC|Hdfc/i },
+  { name: "ICICI", pattern: /ICICI|Icici/i }
+];
+
+function detectBankFromSMS(smsText) {
+  for (const b of bankDetectPatterns) {
+    if (b.pattern.test(smsText)) return b.name;
+  }
+  return null;
+}
+
+function tryParseAmountWithVariants(text) {
+  const re = /(?:Rs\.?|INR|INR\.)\s*([\d,]+(?:\.\d{1,2})?)/i;
+  const m = text.match(re);
+  if (!m) return null;
+  return parseFloat(m[1].replace(/,/g, ""));
+}
+
+function parseHDFCSMS(sms) {
+  const text = sms;
+  if (/debited/i.test(text)) {
+    const amount = tryParseAmountWithVariants(text);
+    const acctMatch = text.match(/A\/c\s*[:\s]*([XxA-Za-z0-9-]+)/i);
+    const info = text.split("Info:")[1] || text.split("for ")[1] || "";
+    return { type: "debit", amount: amount || null, account: acctMatch ? acctMatch[1] : null, description: (info || text).trim() };
+  }
+  if (/credited/i.test(text)) {
+    const amount = tryParseAmountWithVariants(text);
+    const acctMatch = text.match(/A\/c\s*[:\s]*([XxA-Za-z0-9-]+)/i);
+    const info = text.split("Info:")[1] || text.split("by ")[1] || "";
+    return { type: "credit", amount: amount || null, account: acctMatch ? acctMatch[1] : null, description: (info || text).trim() };
+  }
+  return null;
+}
+
+function parseICICISMS(sms) {
+  const text = sms;
+  if (/debited/i.test(text)) {
+    const amount = tryParseAmountWithVariants(text);
+    const acct = text.match(/Acct\s*[:\s]*([A-Za-z0-9-]+)/i);
+    const towards = text.split("towards")[1] || text.split("for ")[1] || "";
+    return { type: "debit", amount: amount || null, account: acct ? acct[1] : null, description: (towards || text).trim() };
+  }
+  if (/credited/i.test(text)) {
+    const amount = tryParseAmountWithVariants(text);
+    const acct = text.match(/Acct\s*[:\s]*([A-Za-z0-9-]+)/i);
+    const info = text.split("Info:")[1] || text.split("by ")[1] || "";
+    return { type: "credit", amount: amount || null, account: acct ? acct[1] : null, description: (info || text).trim() };
+  }
+  return null;
+}
+
+function parseSMS({ bank, text, receivedAt }) {
+  const bankName = bank || detectBankFromSMS(text) || null;
+  let parsed = null;
+  if (bankName === "HDFC") parsed = parseHDFCSMS(text);
+  else if (bankName === "ICICI") parsed = parseICICISMS(text);
+  else parsed = parseHDFCSMS(text) || parseICICISMS(text);
+  if (!parsed) return null;
+  return {
+    id: `sms-${Date.now()}-${Math.floor(Math.random()*9999)}`,
+    date: (receivedAt ? new Date(receivedAt) : new Date()).toISOString().slice(0,10),
+    timestamp: (receivedAt ? new Date(receivedAt) : new Date()).toISOString(),
+    type: parsed.type,
+    amount: parsed.amount,
+    accountId: parsed.account || null,
+    category: parsed.description && /emi|loan/i.test(parsed.description) ? "EMI" : "Uncategorized",
+    description: parsed.description || text,
+    raw: text,
+    bank: bankName
+  };
+}
+
+module.exports = { parseSMS, detectBankFromSMS };

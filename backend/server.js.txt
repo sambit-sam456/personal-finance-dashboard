@@ -1,0 +1,52 @@
+const express = require("express");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const bodyParser = require("body-parser");
+const cors = require("cors");
+const { parseSMS } = require("./smsParser");
+const { insertTransaction, getTransactions } = require("./db");
+const { v4: uuidv4 } = require("uuid");
+
+const API_KEY = process.env.API_KEY || "dev-key-123";
+
+const app = express();
+app.use(helmet());
+app.use(cors());
+app.use(morgan("tiny"));
+app.use(bodyParser.json({ limit: "200kb" }));
+
+function requireApiKey(req, res, next) {
+  const key = req.header("x-api-key");
+  if (!key || key !== API_KEY) return res.status(401).json({ error: "Unauthorized" });
+  next();
+}
+
+app.post("/api/sms", requireApiKey, (req, res) => {
+  const { sms, smsList } = req.body;
+  const items = smsList || (sms ? [sms] : []);
+  if (!items.length) return res.status(400).json({ error: "No sms provided" });
+
+  const results = [];
+  for (const s of items) {
+    const parsed = parseSMS({ bank: s.bank, text: s.text, receivedAt: s.receivedAt });
+    if (!parsed) {
+      results.push({ ok: false, reason: "Could not parse", raw: s });
+      continue;
+    }
+    parsed.id = parsed.id || `tx-${uuidv4()}`;
+    const ok = insertTransaction(parsed);
+    results.push({ ok, txId: parsed.id });
+  }
+  res.json({ results });
+});
+
+app.get("/api/transactions", requireApiKey, (req, res) => {
+  const q = { accountId: req.query.accountId, date: req.query.date, limit: parseInt(req.query.limit || "200", 10) };
+  const tx = getTransactions(q);
+  res.json({ transactions: tx });
+});
+
+app.get("/health", (req, res) => res.json({ ok: true, now: new Date().toISOString() }));
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`PF backend listening on ${PORT}, API_KEY=${API_KEY}`));
